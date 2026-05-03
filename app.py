@@ -1,5 +1,4 @@
 from flask import Flask, render_template, jsonify
-import pandas as pd
 import random # Simulating data for the prototype
 
 app = Flask(__name__)
