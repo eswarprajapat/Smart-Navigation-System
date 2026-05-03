@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Navigation Pro</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        /* Modern UI Variables */
+        :root {
+            --primary: #0A84FF;
+            --success: #34C759;
+            --warning: #FF9F0A;
+            --danger: #FF453A;
+            --surface: rgba(255, 255, 255, 0.95);
+            --surface-solid: #ffffff;
+            --text-main: #1C1C1E;
+            --text-muted: #8E8E93;
+            --border: #E5E5EA;
+            --radius: 16px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+            --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; background: #f0f0f0; }
+        #map { height: 100vh; width: 100vw; z-index: 1; }
+        
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { background: var(--surface-solid); color: var(--text-main); padding: 12px 24px; border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; opacity: 0; transform: translateY(-20px); animation: slideDown 0.4s forwards; pointer-events: auto; }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.info { border-left: 4px solid var(--primary); }
+        @keyframes slideDown { to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+
+        .ui-panel {
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: var(--surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            padding: 24px; border-radius: var(--radius); box-shadow: var(--shadow);
+            width: 340px; max-height: calc(100vh - 40px); display: flex; flex-direction: column;
+            border: 1px solid rgba(255,255,255,0.4); box-sizing: border-box;
+        }
+
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-shrink: 0;}
+        .header h3 { margin: 0; font-size: 20px; color: var(--text-main); font-weight: 700; letter-spacing: -0.5px; }
+        
+        .mode-selector { display: flex; background: #E5E5EA; border-radius: 10px; padding: 4px; margin-bottom: 15px; flex-shrink: 0; }
+        .mode-btn { flex: 1; padding: 8px; border: none; background: transparent; border-radius: 8px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 5px;}
+        .mode-btn.active { background: white; color: var(--text-main); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+        .search-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; position: relative; flex-shrink: 0;}
+        .search-container::before { content: ''; position: absolute; left: 19px; top: 24px; bottom: 24px; width: 2px; background: var(--border); z-index: 0; border-radius: 2px; }
+        .search-row { display: flex; align-items: center; gap: 10px; z-index: 1; }
+        .icon-dot { width: 10px; height: 10px; border-radius: 50%; border: 3px solid var(--primary); background: white; flex-shrink: 0; margin-left: 4px; }
+        .icon-pin { width: 14px; height: 14px; background: var(--danger); border-radius: 4px 4px 50% 50%; flex-shrink: 0; margin-left: 2px; }
+        
+        .input-group { display: flex; flex-grow: 1; background: #f8f9fa; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: var(--transition); align-items: center;}
+        .input-group:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15); background: white; }
+        .input-group input { flex-grow: 1; padding: 12px; border: none; background: transparent; font-size: 14px; color: var(--text-main); outline: none; min-width: 0;}
+        
+        .btn-locate { padding: 0 10px; background: transparent; border: none; cursor: pointer; font-size: 16px; opacity: 0.6; transition: var(--transition); }
+        .btn-locate:hover { opacity: 1; transform: scale(1.1); }
+
+        .btn-search { padding: 0 16px; background: transparent; color: var(--primary); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .btn-search:hover { background: rgba(10, 132, 255, 0.1); }
+
+        .poi-actions { display: flex; gap: 8px; margin-bottom: 15px; flex-shrink: 0;}
+        .btn-poi { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; background: white; border: 1px solid var(--border); border-radius: 12px; font-size: 12px; font-weight: 600; color: var(--text-main); cursor: pointer; transition: var(--transition); box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .btn-poi svg { width: 20px; height: 20px; fill: var(--primary); }
+        .btn-poi:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 8px rgba(10,132,255,0.1); }
+
+        #instruction-banner { font-size: 13px; font-weight: 600; color: var(--primary); background: rgba(10, 132, 255, 0.1); padding: 10px 14px; border-radius: 8px; margin-bottom: 15px; text-align: center; flex-shrink: 0;}
+        
+        #route-ui { display: none; flex-direction: column; flex-grow: 1; overflow: hidden; animation: fadeIn 0.4s forwards; }
+        @keyframes fadeIn { to { opacity: 1; } }
+
+        .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; flex-shrink: 0;}
+        .stat-box { background: #f8f9fa; padding: 10px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .stat-value { font-size: 18px; font-weight: 800; color: var(--text-main); }
+        .stat-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-top: 2px;}
+
+        .action-grid { display: flex; gap: 10px; margin-bottom: 15px; flex-shrink: 0;}
+        .btn-main { flex: 1; padding: 12px; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; color: white; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 6px; transition: var(--transition); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn-main svg { width: 16px; height: 16px; fill: white; }
+        .btn-nav { background: var(--success); }
+        .btn-nav:hover { background: #2EB350; transform: translateY(-1px); }
+        .btn-sim { background: var(--text-main); }
+        .btn-sim:hover { background: #000; transform: translateY(-1px); }
+
+        .directions-container { flex-grow: 1; overflow-y: auto; background: white; border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-bottom: 15px; min-height: 80px; }
+        .directions-container::-webkit-scrollbar { width: 6px; }
+        .directions-container::-webkit-scrollbar-track { background: transparent; }
+        .directions-container::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 10px; }
+        
+        #instructions-list { list-style: none; padding: 0; margin: 0; font-size: 13px; color: var(--text-main); }
+        #instructions-list li { padding: 10px 8px; border-bottom: 1px solid var(--border); transition: var(--transition); }
+        #instructions-list li:last-child { border-bottom: none; }
+        .step-distance { color: var(--text-muted); font-size: 11px; font-weight: 600; display: block; margin-top: 4px; }
+        .active-step { background: rgba(52, 199, 89, 0.1); border-radius: 8px; border-left: 3px solid var(--success); padding-left: 12px !important; font-weight: 600; border-bottom: none !important; margin-bottom: 4px;}
+
+        .btn-reset { flex-shrink: 0; width: 100%; padding: 12px; background: #FF3B30; color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: var(--transition); box-shadow: 0 4px 10px rgba(255, 59, 48, 0.2); margin-top: auto;}
+        .btn-reset:hover { background: #E0241B; transform: translateY(-1px); box-shadow: 0 6px 14px rgba(255, 59, 48, 0.3);}
+
+        @media (max-width: 768px) {
+            .ui-panel { top: auto; bottom: 0; left: 0; right: 0; width: 100%; border-radius: 24px 24px 0 0; padding: 20px; max-height: 60vh; }
+            .leaflet-control-zoom { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toast-container"></div>
+
+    <div class="ui-panel">
+        <div class="header">
+            <h3>Smart Navigation</h3>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--primary)"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        </div>
+
+        <div class="mode-selector">
+            <button class="mode-btn active" id="mode-car" onclick="setMode('driving-car', 'mode-car')">🚗 Car</button>
+            <button class="mode-btn" id="mode-bike" onclick="setMode('cycling-regular', 'mode-bike')">🚲 Bike</button>
+            <button class="mode-btn" id="mode-walk" onclick="setMode('foot-walking', 'mode-walk')">🚶 Walk</button>
+        </div>
+        
+        <div class="search-container">
+            <div class="search-row">
+                <div class="icon-dot"></div>
+                <div class="input-group">
+                    <input type="text" id="start-input" placeholder="Start location (or leave blank)">
+                    <button class="btn-locate" onclick="useCurrentLocation()" title="Use My Location">🎯</button>
+                    <button class="btn-search" onclick="geocodeSearch('start')">Set</button>
+                </div>
+            </div>
+            <div class="search-row">
+                <div class="icon-pin"></div>
+                <div class="input-group">
+                    <input type="text" id="end-input" placeholder="Where to?">
+                    <button class="btn-search" onclick="geocodeSearch('end')">Set</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="poi-actions">
+            <button class="btn-poi" onclick="findNearby('fuel')">
+                <svg viewBox="0 0 24 24"><path d="M19.36 10.18l-1.93-1.93C17.16 8 16.81 8 16.5 8H15V5c0-1.1-.9-2-2-2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-5h2c.62 0 1.2-.24 1.64-.68l2.72-2.72c.44-.44.64-1.02.64-1.64 0-.62-.2-.18-.64-.78zM13 19H5V5h8v14zm3-7h-1v-2h1c.55 0 1 .45 1 1s-.45 1-1 1zm2.5-2.5l-1.5 1.5V9.5h1.5v1.5zM9 14.5c0 .83-.67 1.5-1.5 1.5S6 15.33 6 14.5 6.67 13 7.5 13 9 13.67 9 14.5z"/></svg> Petrol
+            </button>
+            <button class="btn-poi" onclick="findNearby('hospital')">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-1.99.9-1.99 2L3 19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 11h-4v4h-4v-4H6v-4h4V6h4v4h4v4z"/></svg> Hospital
+            </button>
+            <button class="btn-poi" onclick="findNearby('parking')">
+                <svg viewBox="0 0 24 24"><path d="M13 3H6v18h4v-6h3c3.31 0 6-2.69 6-6s-2.69-6-6-6zm.2 8H10V7h3.2c1.1 0 2 .9 2 2s-.9 2-2 2z"/></svg> Parking
+            </button>
+        </div>
+
+        <div id="instruction-banner">Type destination and click 'Set'</div>
+        
+        <div id="route-ui">
+            <div class="analytics-grid">
+                <div class="stat-box">
+                    <span class="stat-value" id="val-time">--</span>
+                    <span class="stat-label">Min <span id="traffic-label" style="text-transform:none; margin-left:2px; font-weight:800;"></span></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value" id="val-dist">--</span>
+                    <span class="stat-label">Kilometers</span>
+                </div>
+            </div>
+
+            <div class="action-grid">
+                <button id="btn-navigate" class="btn-main btn-nav" onclick="startActiveNavigation()">
+                    <svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg> Start Drive
+                </button>
+                <button id="btn-simulate" class="btn-main btn-sim" onclick="startSimulation()">
+                    <svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg> Simulate
+                </button>
+            </div>
+
+            <div class="directions-container">
+                <ul id="instructions-list"></ul>
+            </div>
+        </div>
+
+        <button class="btn-reset" onclick="resetMap()">Cancel Route / Reset</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️'}</span> <span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.animation = 'fadeOut 0.4s forwards'; setTimeout(() => toast.remove(), 400); }, 3000);
+        }
+
+        var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+        var map = L.map('map', { center: [13.0827, 80.2707], zoom: 13, layers: [streetLayer], zoomControl: false });
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // --- PASTE YOUR API KEY HERE ---
+        const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjQyODVlNTI3ZmYzMDRhOTZhZjMxYjRhODYzZDUyNTY0IiwiaCI6Im11cm11cjY0In0='; 
+        
+        let currentRouteLayer = null; 
+        let startCoords = null, endCoords = null;
+        let startMarker = null, endMarker = null;
+        let routeCoords = [], globalSteps = [], currentStepIndex = 0, poiMarkers = [];
+        let liveTracking = null, carMarker = null, animationInterval = null;
+        let appState = 'IDLE'; 
+        let currentMode = 'driving-car';
+
+        const blueDotIcon = L.divIcon({ html: '<div style="width:16px;height:16px;background:#0A84FF;border:3px solid white;border-radius:50%;box-shadow:0 2px 5px rgba(0,0,0,0.4);"></div>', className: '', iconAnchor: [11, 11] });
+        const pinEnd = L.divIcon({ html: '<div style="width:16px;height:16px;background:#FF453A;border:3px solid white;border-radius:50%;box-shadow:0 2px 5px rgba(0,0,0,0.3);"></div>', className: '', iconAnchor: [11, 11] });
+        
+        function getVehicleIcon() {
+            let emoji = currentMode === 'driving-car' ? '🚗' : (currentMode === 'cycling-regular' ? '🚲' : '🚶');
+            return L.divIcon({ html: `<div style="font-size: 32px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4));">${emoji}</div>`, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+        }
+
+        function setInstruction(msg, isLoading = false) {
+            document.getElementById('instruction-banner').innerHTML = isLoading ? `⏳ ${msg}` : msg;
+        }
+
+        function setMode(mode, buttonId) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(buttonId).classList.add('active');
+            if (startCoords && endCoords) generateSmartRoute(startCoords.lng, startCoords.lat, endCoords.lng, endCoords.lat);
+        }
+
+        function useCurrentLocation() {
+            setInstruction("Locating you...", true);
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    let lat = pos.coords.latitude, lng = pos.coords.longitude;
+                    if (startMarker) map.removeLayer(startMarker);
+                    startCoords = {lat: lat, lng: lng};
+                    startMarker = L.marker([lat, lng], {icon: blueDotIcon}).addTo(map);
+                    map.setView([lat, lng], 16); 
+                    document.getElementById('start-input').value = "My Current Location";
+                    showToast("Location found!", "success");
+
+                    if (endCoords) generateSmartRoute(startCoords.lng, startCoords.lat, endCoords.lng, endCoords.lat);
+                    else setInstruction("Now enter a Destination.");
+                }, err => { 
+                    showToast("GPS Permission Denied", "error"); 
+                    setInstruction("Please enter Start manually."); 
+                }, { enableHighAccuracy: true });
+            } else {
+                showToast("GPS Not Supported", "error");
+            }
+        }
+
+        map.on('click', function(e) { 
+            if(appState === 'DRIVING' || appState === 'SIMULATING') return; 
+            handleMapClick(e.latlng.lat, e.latlng.lng); 
+        });
+
+        function handleMapClick(lat, lng) {
+            if (startCoords && endCoords) resetMap();
+            if (!startCoords) {
+                startCoords = {lat: lat, lng: lng};
+                startMarker = L.marker([lat, lng], {icon: blueDotIcon}).addTo(map);
+                document.getElementById('start-input').value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                setInstruction("Select Destination on map or search.");
+            } else if (!endCoords) {
+                endCoords = {lat: lat, lng: lng};
+                endMarker = L.marker([lat, lng], {icon: pinEnd}).addTo(map);
+                document.getElementById('end-input').value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                generateSmartRoute(startCoords.lng, startCoords.lat, endCoords.lng, endCoords.lat);
+            }
+        }
+
+        function geocodeSearch(type) {
+            let inputId = type === 'start' ? 'start-input' : 'end-input';
+            let query = document.getElementById(inputId).value;
+            if(!query) { showToast("Please enter a location", "error"); return; }
+            
+            setInstruction("Searching...", true);
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.length > 0) {
+                        let lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+                        
+                        if (type === 'start') {
+                            if (startMarker) map.removeLayer(startMarker);
+                            startCoords = {lat: lat, lng: lng};
+                            startMarker = L.marker([lat, lng], {icon: blueDotIcon}).addTo(map);
+                            map.setView([lat, lng], 14); 
+                        } else {
+                            if (endMarker) map.removeLayer(endMarker);
+                            endCoords = {lat: lat, lng: lng};
+                            endMarker = L.marker([lat, lng], {icon: pinEnd}).addTo(map);
+                            
+                            if (!startCoords) {
+                                setInstruction("Finding your current location...", true);
+                                if (navigator.geolocation) {
+                                    navigator.geolocation.getCurrentPosition(pos => {
+                                        let cLat = pos.coords.latitude, cLng = pos.coords.longitude;
+                                        startCoords = {lat: cLat, lng: cLng};
+                                        startMarker = L.marker([cLat, cLng], {icon: blueDotIcon}).addTo(map);
+                                        document.getElementById('start-input').value = "My Current Location";
+                                        showToast("Auto-detecting your location", "success");
+                                        generateSmartRoute(startCoords.lng, startCoords.lat, endCoords.lng, endCoords.lat);
+                                    }, err => {
+                                        showToast("Could not auto-detect location.", "error");
+                                        setInstruction("Please enter Start manually.");
+                                    }, { enableHighAccuracy: true });
+                                }
+                                return; 
+                            }
+                        }
+                        if (startCoords && endCoords) generateSmartRoute(startCoords.lng, startCoords.lat, endCoords.lng, endCoords.lat);
+                        else setInstruction(type === 'start' ? "Start found. Now set Destination." : "Destination found. Now set Start.");
+                    } else { showToast("Location not found.", "error"); setInstruction("Select destinations on the map."); }
+                }).catch(err => { showToast("Network error.", "error"); setInstruction("Select destinations on the map."); });
+        }
+
+        function findNearby(type) {
+            let center = startCoords || {lat: 13.0827, lng: 80.2707}; 
+            if (carMarker) center = carMarker.getLatLng(); 
+            setInstruction(`Scanning for ${type}...`, true);
+            
+            let query = `[out:json];node(around:3000,${center.lat},${center.lng})[amenity=${type}];out;`;
+            let url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
+            fetch(url).then(res => res.json()).then(data => {
+                poiMarkers.forEach(m => map.removeLayer(m)); poiMarkers = [];
+                if(data.elements.length === 0) { showToast(`No ${type} found nearby.`, 'info'); setInstruction("Route ready."); return;}
+                
+                data.elements.forEach(poi => {
+                    let m = L.circleMarker([poi.lat, poi.lon], {color: '#FF9F0A', radius: 6, fillOpacity: 1, stroke: true, weight: 2, color: 'white'}).addTo(map).bindPopup(`<b>${poi.tags.name || type}</b>`);
+                    poiMarkers.push(m);
+                });
+                showToast(`Found ${data.elements.length} locations.`, 'success');
+                setInstruction(appState !== 'IDLE' ? "Route ready." : "Select destinations on the map.");
+            }).catch(e => { showToast("Failed to load POIs", "error"); setInstruction("Route ready."); });
+        }
+
+        function generateSmartRoute(startLng, startLat, endLng, endLat) {
+            setInstruction("Analyzing route...", true);
+            
+            if (currentMode === 'driving-car') {
+                fetch('/api/predict_traffic/1800')
+                    .then(res => res.json())
+                    .then(data => {
+                        let st = data.predicted_status;
+                        let color = st === "Red" ? '#FF453A' : (st === "Green" ? '#34C759' : '#FF9F0A');
+                        document.getElementById('traffic-label').innerText = `(${st} Traffic)`;
+                        document.getElementById('traffic-label').style.color = color;
+                        drawRoute(startLng, startLat, endLng, endLat, color);
+                    }).catch(err => {
+                        document.getElementById('traffic-label').innerText = "";
+                        drawRoute(startLng, startLat, endLng, endLat, '#0A84FF');
+                    });
+            } else {
+                document.getElementById('traffic-label').innerText = "";
+                drawRoute(startLng, startLat, endLng, endLat, '#0A84FF');
+            }
+        }
+
+        function drawRoute(startLng, startLat, endLng, endLat, routeColor) {
+            const url = `https://api.openrouteservice.org/v2/directions/${currentMode}?api_key=${ORS_API_KEY}&start=${startLng},${startLat}&end=${endLng},${endLat}`;
+            
+            fetch(url).then(res => res.json()).then(data => {
+                if(data.error) throw new Error("Routing failed");
+                if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+                
+                let lineStyle = currentMode === 'driving-car' ? {} : { dashArray: '10, 10' };
+
+                currentRouteLayer = L.featureGroup([
+                    L.geoJSON(data, { style: () => ({ color: '#000000', weight: 8, opacity: 0.3 }) }),
+                    L.geoJSON(data, { style: () => ({ color: routeColor, weight: 5, opacity: 1, ...lineStyle }) })
+                ]).addTo(map);
+                
+                map.fitBounds(currentRouteLayer.getBounds(), { padding: [40, 40] });
+
+                routeCoords = data.features[0].geometry.coordinates; 
+                const summary = data.features[0].properties.summary;
+                
+                document.getElementById('val-dist').innerText = (summary.distance / 1000).toFixed(1);
+                document.getElementById('val-time').innerText = Math.round(summary.duration / 60);
+                
+                globalSteps = data.features[0].properties.segments[0].steps;
+                const listEl = document.getElementById('instructions-list');
+                listEl.innerHTML = ''; 
+                
+                globalSteps.forEach((step, index) => {
+                    let coordIndex = step.way_points[0];
+                    step.latLng = L.latLng(routeCoords[coordIndex][1], routeCoords[coordIndex][0]);
+                    step.announced = false; 
+
+                    let li = document.createElement('li');
+                    li.id = "step-" + index;
+                    li.innerHTML = `${step.instruction} <span class="step-distance">${Math.round(step.distance)} meters</span>`;
+                    listEl.appendChild(li);
+                });
+                
+                document.getElementById('route-ui').style.display = 'flex';
+                setInstruction(`Route ready. Click 'Start Drive' to navigate.`);
+                appState = 'ROUTED';
+                showToast("Route Generated", "success");
+            }).catch(err => { showToast("Failed to generate route.", "error"); resetMap(); });
+        }
+
+        function checkProgress(currentLat, currentLng) {
+            if (currentStepIndex >= globalSteps.length) return;
+            let nextTurn = globalSteps[currentStepIndex];
+            
+            let distanceToTurn = map.distance([currentLat, currentLng], nextTurn.latLng);
+
+            if (distanceToTurn <= 50 && !nextTurn.announced) {
+                window.speechSynthesis.cancel(); 
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance(nextTurn.instruction));
+                nextTurn.announced = true;
+                
+                if (currentStepIndex > 0) document.getElementById("step-" + (currentStepIndex - 1)).classList.remove("active-step");
+                const activeEl = document.getElementById("step-" + currentStepIndex);
+                activeEl.classList.add("active-step");
+                activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            if (distanceToTurn < 15 && nextTurn.announced) currentStepIndex++; 
+        }
+
+        // --- UPDATED: SMART START BUTTON ---
+        function startActiveNavigation() {
+            if (appState === 'DRIVING') return;
+            appState = 'DRIVING';
+            currentStepIndex = 0;
+            
+            document.getElementById('btn-navigate').innerHTML = "Driving Mode";
+            document.getElementById('btn-simulate').style.display = "none";
+            if (startMarker) map.removeLayer(startMarker); 
+            
+            let isCurrentLocation = document.getElementById('start-input').value === "My Current Location";
+
+            if (!isCurrentLocation) {
+                // MANUAL START GIVEN: 
+                // Zoom precisely into the starting point and stay there. Do not jump to physical GPS.
+                map.setView([startCoords.lat, startCoords.lng], 18);
+                carMarker = L.marker([startCoords.lat, startCoords.lng], {icon: getVehicleIcon()}).addTo(map);
+                showToast("Manual start used. Camera locked to start point.", "info");
+            } else {
+                // START LOCATION NOT GIVEN (Auto-detected):
+                // Zoom into your current physical location and track it.
+                let firstFix = true;
+                if (navigator.geolocation) {
+                    liveTracking = navigator.geolocation.watchPosition(pos => {
+                        let lat = pos.coords.latitude, lng = pos.coords.longitude;
+                        
+                        if (carMarker) carMarker.setLatLng([lat, lng]);
+                        else carMarker = L.marker([lat, lng], {icon: getVehicleIcon()}).addTo(map);
+                        
+                        if (firstFix) {
+                            map.setView([lat, lng], 18); // Zoom ONCE
+                            firstFix = false;
+                        } else {
+                            map.panTo([lat, lng]); // Smooth follow, allowing free manual zoom
+                        }
+                        
+                        checkProgress(lat, lng);
+                    }, err => { showToast("GPS Permission Denied", "error"); resetMap(); }, { enableHighAccuracy: true });
+                } else { showToast("GPS Not Supported", "error"); }
+            }
+        }
+
+        // --- UPDATED: SMART SIMULATION ---
+        function startSimulation() {
+            if (appState === 'SIMULATING') return;
+            appState = 'SIMULATING';
+            currentStepIndex = 0;
+            
+            if (carMarker) map.removeLayer(carMarker);
+            if (startMarker) map.removeLayer(startMarker);
+            if (animationInterval) clearInterval(animationInterval);
+
+            let path = routeCoords.map(coord => [coord[1], coord[0]]);
+            carMarker = L.marker(path[0], {icon: getVehicleIcon()}).addTo(map);
+            let i = 0;
+
+            document.getElementById('btn-simulate').innerHTML = "Simulating...";
+            document.getElementById('btn-navigate').style.display = "none";
+            
+            map.setView(path[0], 18); // Zoom into the starting line
+            
+            let speed = currentMode === 'driving-car' ? 80 : (currentMode === 'cycling-regular' ? 120 : 200);
+
+            animationInterval = setInterval(() => {
+                if (i >= path.length) {
+                    clearInterval(animationInterval);
+                    document.getElementById('btn-simulate').innerHTML = "Arrived!";
+                    showToast("Destination Reached", "success");
+                    window.speechSynthesis.speak(new SpeechSynthesisUtterance("You have arrived. Returning to your location."));
+                    
+                    // WAIT 3 SECONDS, THEN TELEPORT CAR TO CURRENT LOCATION
+                    setTimeout(() => {
+                        if (navigator.geolocation) {
+                            navigator.geolocation.getCurrentPosition(pos => {
+                                let clat = pos.coords.latitude, clng = pos.coords.longitude;
+                                if(carMarker) carMarker.setLatLng([clat, clng]);
+                                map.panTo([clat, clng]);
+                            }, () => {
+                                // Fallback if GPS fails: back to start coordinates
+                                if(carMarker) carMarker.setLatLng([startCoords.lat, startCoords.lng]);
+                                map.panTo([startCoords.lat, startCoords.lng]);
+                            });
+                        }
+                        
+                        document.getElementById('btn-simulate').innerHTML = `<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg> Simulate Again`;
+                        document.getElementById('btn-navigate').style.display = "flex"; 
+                        appState = 'ROUTED';
+                        currentStepIndex = 0; 
+                        
+                        document.querySelectorAll('.active-step').forEach(el => el.classList.remove('active-step'));
+                    }, 3000);
+                    
+                    return;
+                }
+                
+                let lat = path[i][0], lng = path[i][1];
+                carMarker.setLatLng([lat, lng]); 
+                
+                // ONLY pan during the loop so manual zoom works!
+                map.panTo([lat, lng]); 
+                
+                checkProgress(lat, lng); 
+                i++;
+            }, speed); 
+        }
+
+        function resetMap() {
+            startCoords = null; endCoords = null; globalSteps = []; routeCoords = []; currentStepIndex = 0;
+            appState = 'IDLE';
+            
+            if (startMarker) map.removeLayer(startMarker);
+            if (endMarker) map.removeLayer(endMarker);
+            if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+            if (carMarker) map.removeLayer(carMarker);
+            poiMarkers.forEach(m => map.removeLayer(m)); poiMarkers = [];
+            
+            document.getElementById('start-input').value = "";
+            document.getElementById('end-input').value = "";
+            document.getElementById('route-ui').style.display = 'none';
+            setInstruction("Type destination and click 'Set'");
+            
+            document.getElementById('btn-navigate').style.display = "flex";
+            document.getElementById('btn-navigate').innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg> Start Drive`;
+            document.getElementById('btn-simulate').style.display = "flex";
+            document.getElementById('btn-simulate').innerHTML = `<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg> Simulate`;
+            
+            window.speechSynthesis.cancel(); 
+            if (liveTracking) navigator.geolocation.clearWatch(liveTracking);
+            if (animationInterval) clearInterval(animationInterval);
+            carMarker = null;
+            map.setView([13.0827, 80.2707], 13);
+        }
+    </script>
+</body>
+</html>
