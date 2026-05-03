@@ -1,6 +1,6 @@
 # 🌍 Smart Navigation Map
 
-[👉 CLICK HERE FOR THE LIVE DEMO 👈]([https://your-app-name.onrender.com](https://smart-navigation-system-2.onrender.com/))
+link of the project : https://smart-navigation-system-2.onrender.com/
 
 A lightweight, real-time GPS navigation and spatial mapping web application built for my Final Year Project. 
 
